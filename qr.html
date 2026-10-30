@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="icon" href="data:,"><title>Machine QR Codes</title>
+<style>
+body{font-family:system-ui,sans-serif;background:#f4f7f6;margin:0;padding:20px;text-align:center;color:#12332d}
+input{width:min(420px,90%);padding:10px;border-radius:10px;border:1px solid #b9d3cd;font:inherit}
+.grid{display:flex;flex-wrap:wrap;gap:18px;justify-content:center;margin-top:18px}
+.c{background:#fff;border-radius:14px;padding:16px;box-shadow:0 2px 8px #0001}
+.c div.q{display:flex;justify-content:center;margin:10px 0}.c small{color:#4b6b64;word-break:break-all;display:block;max-width:220px}
+</style></head><body>
+<h1>Scan to open the safety guide</h1>
+<p>Base URL: <input id="base"></p>
+<div class="grid" id="grid"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="data.js"></script>
+<script>
+const base = document.getElementById("base"); base.value = location.origin;
+function draw() {
+  const g = document.getElementById("grid"); g.innerHTML = "";
+  Object.keys(MACHINES).forEach(k => {
+    const url = base.value.replace(/\/$/, "") + "/?machine=" + k + "&worker=W123";
+    const c = document.createElement("div"); c.className = "c";
+    c.innerHTML = "<h3>" + MACHINES[k].displayName + "</h3><div class='q'></div><small>" + url + "</small>";
+    g.appendChild(c); new QRCode(c.querySelector(".q"), { text: url, width: 180, height: 180 });
+  });
+}
+base.oninput = draw; draw();
+</script></body></html>

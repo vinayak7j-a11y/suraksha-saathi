@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="icon" href="data:,"><title>Supervisor Dashboard</title>
+<style>
+:root{--g:#128c7e}
+*{box-sizing:border-box}
+body{margin:0;font-family:system-ui,sans-serif;background:#f1f5f4;color:#12332d}
+header{background:linear-gradient(135deg,#075e54,#128c7e);color:#fff;padding:18px 22px}
+header h1{margin:0;font-size:22px}header p{margin:4px 0 0;opacity:.9;font-size:14px}
+.wrap{max-width:1000px;margin:0 auto;padding:18px}
+.bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+select,button{font:inherit;padding:9px 14px;border-radius:10px;border:1px solid var(--g);background:#fff;color:var(--g);cursor:pointer}
+button.p{background:var(--g);color:#fff}
+.live{display:inline-block;width:9px;height:9px;border-radius:50%;background:#34d399;margin-right:6px;animation:b 1.4s infinite}@keyframes b{50%{opacity:.3}}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin:14px 0}
+.card{background:#fff;border-radius:14px;padding:16px;box-shadow:0 2px 8px #0001;border-left:5px solid var(--g)}
+.card.r{border-left-color:#d9382c}.card.o{border-left-color:#0b6b2a}
+.card b{display:block;font-size:30px}.card span{color:#4b6b64;font-size:13px}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:14px}
+h2{margin:20px 0 8px;font-size:17px}
+.box{background:#fff;border-radius:14px;padding:14px 16px;box-shadow:0 2px 8px #0001}
+.insight{background:#fff4e5;border-left:5px solid #f59e0b;border-radius:14px;padding:14px 16px;font-size:15px;line-height:1.5}
+.row{margin-bottom:12px}
+.track{background:#e6efec;border-radius:6px;height:12px;margin-top:4px}
+.track div{background:#d9382c;height:12px;border-radius:6px}
+table{width:100%;border-collapse:collapse;background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 2px 8px #0001}
+th,td{padding:10px 12px;text-align:left;border-bottom:1px solid #e6efec;font-size:14px}th{background:var(--g);color:#fff}
+.badge{padding:3px 10px;border-radius:999px;font-weight:700;font-size:12px}
+.badge.u{background:#d6f5dd;color:#0b6b2a}.badge.n{background:#fde0dd;color:#a3231a}
+</style></head><body>
+<header><h1>Supervisor Dashboard</h1><p><span class="live"></span>Live – who actually understood which procedure. Worker IDs only, no names, no recordings stored.</p></header>
+<div class="wrap">
+<div class="bar">
+  <select id="f"><option value="all">All machines</option></select>
+  <select id="r"><option value="all">All time</option><option value="today">Today</option><option value="hour">Last hour</option></select>
+  <button id="seed">Load demo data</button><button id="csv" class="p">Export CSV</button><button id="clear">Clear</button>
+</div>
+<div class="cards" id="cards"></div>
+<h2>Insight</h2><div class="insight" id="insight"></div>
+<div class="grid2">
+  <div><h2>Machines needing clearer instructions</h2><div class="box" id="byM"></div></div>
+  <div><h2>Most common questions</h2><div class="box" id="topQ"></div></div>
+</div>
+<h2>Latest sessions</h2>
+<table><thead><tr><th>Time</th><th>Worker</th><th>Machine</th><th>Procedure</th><th>Status</th></tr></thead><tbody id="rows"></tbody></table>
+</div>
+<script src="data.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const mn = k => MACHINES[k] ? MACHINES[k].displayName : k;
+Object.keys(MACHINES).forEach(k => $("f").insertAdjacentHTML("beforeend", `<option value="${k}">${esc(mn(k))}</option>`));
+function inRange(l) {
+  const r = $("r").value, t = new Date(l.timestamp).getTime();
+  if (r === "hour") return t >= Date.now() - 3600000;
+  if (r === "today") { const d = new Date(); d.setHours(0, 0, 0, 0); return t >= d.getTime(); }
+  return true;
+}
+function data() {
+  const base = LogService.getAll().filter(inRange);
+  const f = $("f").value;
+  return { base, logs: base.filter(l => f === "all" || l.machineId === f) };
+}
+function render() {
+  const { base, logs } = data();
+  const u = logs.filter(l => l.understood).length, n = logs.length - u;
+  const workers = new Set(logs.map(l => l.workerId)).size;
+  $("cards").innerHTML = `<div class="card"><b>${logs.length}</b><span>Total sessions</span></div>
+    <div class="card o"><b>${logs.length ? Math.round(u / logs.length * 100) : 0}%</b><span>Understood</span></div>
+    <div class="card r"><b>${n}</b><span>Not understood</span></div>
+    <div class="card"><b>${workers}</b><span>Workers covered</span></div>`;
+  const bm = {};
+  base.forEach(l => { bm[l.machineId] = bm[l.machineId] || { u: 0, n: 0 }; l.understood ? bm[l.machineId].u++ : bm[l.machineId].n++; });
+  const rate = k => bm[k].n / (bm[k].n + bm[k].u);
+  const ks = Object.keys(bm).sort((a, b) => rate(b) - rate(a));
+  const qc = {};
+  logs.filter(l => l.questionText).forEach(l => { const key = l.machineId + "||" + l.questionText; qc[key] = (qc[key] || 0) + 1; });
+  const qs = Object.entries(qc).sort((a, b) => b[1] - a[1]);
+  $("insight").innerHTML = ks.length
+    ? `⚠ <b>${esc(mn(ks[0]))}</b> has the highest confusion (${Math.round(rate(ks[0]) * 100)}% not understood). Recommend re-training and simpler instructions.` + (qs.length ? `<br>Most asked question: “${esc(qs[0][0].split("||")[1])}” (${qs[0][1]}×)` : "")
+    : "No data yet. Run a worker session or click “Load demo data”.";
+  $("byM").innerHTML = ks.map(k => `<div class="row"><b>${esc(mn(k))}</b>: <span style="color:#a3231a;font-weight:700">${bm[k].n} not understood</span> / <span style="color:#0b6b2a;font-weight:700">${bm[k].u} understood</span><div class="track"><div style="width:${Math.round(rate(k) * 100)}%"></div></div></div>`).join("") || "No data yet";
+  $("topQ").innerHTML = qs.slice(0, 6).map(([k, c]) => { const [m, q] = k.split("||"); return `<div class="row">${c}× &nbsp;${esc(q)} <small>(${esc(mn(m))})</small></div>`; }).join("") || "No questions yet";
+  $("rows").innerHTML = logs.slice().reverse().slice(0, 50).map(l =>
+    `<tr><td>${new Date(l.timestamp).toLocaleTimeString()}</td><td>${esc(l.workerId)}</td><td>${esc(mn(l.machineId))}</td><td>${esc(l.procedureId)}</td><td><span class="badge ${l.understood ? "u" : "n"}">${l.understood ? "Understood" : "Not understood"}</span></td></tr>`).join("");
+}
+$("seed").onclick = () => {
+  const qs = { "press-3": ["अगर कपड़ा फँस जाए तो क्या करना है?", "मशीन कैसे चालू करें?", "हाथ कट जाए तो क्या करें?"], "assembly-2": ["बेल्ट रुक जाए तो क्या करें?", "दस्ताने कहाँ मिलेंगे?"] };
+  for (let i = 0; i < 14; i++) {
+    const m = Math.random() < 0.6 ? "press-3" : "assembly-2";
+    const pass = Math.random() < (m === "press-3" ? 0.4 : 0.75);
+    LogService.add({ workerId: "W" + (100 + Math.floor(Math.random() * 12)), machineId: m, procedureId: MACHINES[m].procedureId,
+      questionText: qs[m][Math.floor(Math.random() * qs[m].length)], answerTranscript: "", understood: pass,
+      timestamp: new Date(Date.now() - i * 240000).toISOString() });
+  }
+  render();
+};
+$("csv").onclick = () => {
+  const rows = [["time", "worker", "machine", "procedure", "status", "question"]];
+  data().logs.forEach(l => rows.push([l.timestamp, l.workerId, l.machineId, l.procedureId, l.understood ? "understood" : "not understood", l.questionText || ""]));
+  const csv = rows.map(r => r.map(c => '"' + String(c).replace(/"/g, '""') + '"').join(",")).join("\n");
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" })); a.download = "suraksha_log.csv"; a.click();
+};
+$("clear").onclick = () => { LogService.clear(); render(); };
+$("f").onchange = render; $("r").onchange = render;
+render(); setInterval(render, 2000);
+</script></body></html>

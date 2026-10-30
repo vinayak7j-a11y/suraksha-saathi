@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="hi"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Suraksha Saathi</title><link rel="icon" href="data:,">
+<style>
+:root{--g:#128c7e;--dg:#075e54}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0 auto;font-family:system-ui,-apple-system,"Noto Sans Devanagari",sans-serif;background:#ece5dd;color:#12332d;height:100vh;display:flex;flex-direction:column;max-width:480px;box-shadow:0 0 30px #0002}
+header{background:linear-gradient(135deg,#075e54,#128c7e);color:#fff;padding:12px 14px;display:flex;align-items:center;gap:10px}
+.logo{font-size:30px}.hd{flex:1}
+header h1{font-size:17px;margin:0}header small{opacity:.85}
+.lang{display:flex;background:#0003;border-radius:999px;padding:3px}
+.lang button{background:transparent;color:#fff;padding:5px 11px;border-radius:999px;font-size:13px;margin:0}
+.lang button.on{background:#fff;color:var(--dg);font-weight:700}
+.steps{display:flex;gap:6px;padding:8px 10px;background:#fff;font-size:12px}
+.steps span{flex:1;text-align:center;padding:6px 2px;border-radius:8px;background:#e6efec;color:#4b6b64}
+.steps .active{background:var(--g);color:#fff;font-weight:700}
+.steps .done{background:#d6f5dd;color:#0b6b2a}
+#chat{flex:1;min-height:0;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:8px}
+.b{max-width:86%;padding:10px 12px;border-radius:12px;font-size:16px;line-height:1.45;box-shadow:0 1px 2px #0002;white-space:pre-wrap}
+.bot{background:#fff;align-self:flex-start;border-top-left-radius:2px}
+.me{background:#dcf8c6;align-self:flex-end;border-top-right-radius:2px}
+.speaking{outline:2px solid var(--g)}
+.chip{align-self:center;padding:10px 18px;border-radius:999px;font-weight:700}
+.ok{background:#d6f5dd;color:#0b6b2a}.bad{background:#fde0dd;color:#a3231a}
+.bar{background:#f0f0f0;padding:10px 12px;text-align:center}
+#status{min-height:20px;color:#4b6b64;font-size:14px;margin-bottom:4px}
+.wave{display:none;height:22px;justify-content:center;gap:3px;align-items:flex-end;margin-bottom:4px}
+.wave.on{display:flex}
+.wave i{width:5px;height:5px;background:var(--g);border-radius:3px;animation:w .9s infinite ease-in-out}
+.wave i:nth-child(2){animation-delay:.12s}.wave i:nth-child(3){animation-delay:.24s}.wave i:nth-child(4){animation-delay:.36s}.wave i:nth-child(5){animation-delay:.48s}
+@keyframes w{0%,100%{height:5px}50%{height:20px}}
+button{font:inherit;border:0;border-radius:12px;padding:12px 18px;cursor:pointer;background:var(--g);color:#fff}
+.ghost{background:#fff;color:var(--g);border:2px solid var(--g);margin:3px;padding:8px 12px;font-size:14px}
+.chip-q{background:#fff;color:var(--dg);border:1px solid var(--g);border-radius:999px;padding:8px 12px;font-size:14px;margin:3px}
+#start{font-size:20px;padding:16px 30px}
+#mic{width:84px;height:84px;border-radius:50%;font-size:36px;padding:0;box-shadow:0 4px 14px #128c7e66}
+#mic.on{background:#d9382c;animation:p 1s infinite}@keyframes p{50%{transform:scale(1.1)}}
+.fb{display:flex;gap:6px;margin-top:8px}.fb input{flex:1;padding:10px;border-radius:12px;border:1px solid #b9d3cd;font:inherit}
+</style></head><body>
+<header>
+  <div class="logo">🦺</div>
+  <div class="hd"><h1 id="title"></h1><small id="sub"></small></div>
+  <div class="lang"><button id="lhi" class="on">हिं</button><button id="len">EN</button></div>
+</header>
+<div class="steps" id="steps"><span></span><span></span><span></span><span></span></div>
+<div id="vbanner" style="display:none;background:#fff4e5;color:#8a4b00;padding:8px 12px;font-size:13px">⚠ Hindi voice not found on this device. Tap EN, or install a Hindi voice (System Settings → Accessibility → Spoken Content → System Voice → Manage Voices).</div><div id="chat"></div>
+<div class="bar">
+  <div class="wave" id="wave"><i></i><i></i><i></i><i></i><i></i></div>
+  <div id="status"></div>
+  <div id="chips"></div>
+  <button id="start"></button>
+  <button id="mic" hidden>🎤</button>
+  <div><button id="skip" class="ghost" hidden></button><button id="repeat" class="ghost" hidden></button><button id="again" class="ghost" hidden></button></div>
+  <div class="fb"><input id="txt"><button id="send"></button></div>
+</div>
+<script src="data.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+const p = new URLSearchParams(location.search);
+const mid = MACHINES[p.get("machine")] ? p.get("machine") : "press-3";
+const worker = p.get("worker") || "W123";
+const M = MACHINES[mid];
+let lang = p.get("lang") === "en" ? "en" : "hi";
+let phase = "idle", question = "", busy = false;
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+const UI = {
+  hi: { title: " – सुरक्षा साथी", start: "▶ शुरू करें", prompt: "अगर कोई सवाल है तो माइक दबाकर पूछिए। नहीं है तो आगे बढ़ें दबाइए।", quizIntro: "अब एक छोटा सवाल। ",
+    good: "बहुत बढ़िया, आपने सही समझा है। धन्यवाद!", bad: "लगता है कुछ बात क्लियर नहीं हुई। मैं फिर से समझाता हूँ।",
+    skip: "सवाल नहीं है, आगे बढ़ें", repeat: "🔁 फिर से सुनें", again: "🔄 नया सत्र", ph: "या यहाँ लिखकर जवाब दें", send: "भेजें",
+    tapQ: "माइक दबाकर सवाल पूछिए या नीचे से चुनिए", tapA: "माइक दबाकर अपने शब्दों में जवाब दीजिए", listening: "सुन रहा हूँ… बोलिए",
+    nohear: "सुनाई नहीं दिया। फिर से दबाइए या नीचे लिखिए।", nosr: "इस ब्राउज़र में आवाज़ नहीं चलेगी। Chrome इस्तेमाल करें या नीचे लिखिए।",
+    done: "पूरा हुआ ✔ – लॉग डैशबोर्ड में दिख रहा है", ok: "Status: UNDERSTOOD ✔", no: "NOT UNDERSTOOD – ट्रेनर से दोबारा बात करें",
+    steps: ["1 सुनें", "2 पूछें", "3 जाँच", "4 नतीजा"], speak: "hi-IN" },
+  en: { title: " – Suraksha Saathi", start: "▶ Start", prompt: "If you have a question, tap the mic and ask. If not, tap Continue.", quizIntro: "Now a short question. ",
+    good: "Great, you understood it correctly. Thank you!", bad: "Some of it was not clear. Let me explain again.",
+    skip: "No question, continue", repeat: "🔁 Listen again", again: "🔄 New session", ph: "Or type your answer here", send: "Send",
+    tapQ: "Tap the mic to ask, or pick a question below", tapA: "Tap the mic and answer in your own words", listening: "Listening… please speak",
+    nohear: "Could not hear you. Tap again or type below.", nosr: "Voice does not work in this browser. Use Chrome or type below.",
+    done: "Done ✔ – the log is visible on the dashboard", ok: "Status: UNDERSTOOD ✔", no: "NOT UNDERSTOOD – please talk to the trainer",
+    steps: ["1 Listen", "2 Ask", "3 Check", "4 Result"], speak: "en-IN" }
+};
+const CH = {
+  "press-3": { hi: ["कपड़ा फँस जाए तो?", "मशीन कैसे चालू करें?", "हाथ कट जाए तो?"], en: ["What if cloth gets stuck?", "How do I start the machine?", "What if someone is hurt?"] },
+  "assembly-2": { hi: ["बेल्ट में कुछ अटक जाए तो?", "दस्ताने कहाँ मिलेंगे?"], en: ["What if the belt jams?", "Where do I get gloves?"] }
+};
+const instr = () => lang === "en" ? M.en.instruction : M.instruction;
+const quizQ = () => lang === "en" ? M.en.quiz : M.quiz.question;
+const setStatus = t => $("status").textContent = t;
+function setStep(i) { [...$("steps").children].forEach((s, k) => s.className = k < i ? "done" : k === i ? "active" : ""); }
+function setPhase(ph) { phase = ph; renderChips(); }
+function renderChips() {
+  const c = $("chips"); c.innerHTML = "";
+  if (phase !== "question") return;
+  (CH[mid] || CH["press-3"])[lang].forEach(q => {
+    const b = document.createElement("button"); b.className = "chip-q"; b.textContent = q; b.onclick = () => handle(q); c.appendChild(b);
+  });
+}
+function applyLang() {
+  const U = UI[lang];
+  document.documentElement.lang = lang;
+  $("title").textContent = M.displayName + U.title;
+  $("sub").textContent = "Worker ID: " + worker;
+  [...$("steps").children].forEach((s, i) => s.textContent = U.steps[i]);
+  $("start").textContent = U.start; $("skip").textContent = U.skip; $("repeat").textContent = U.repeat; $("again").textContent = U.again;
+  $("txt").placeholder = U.ph; $("send").textContent = U.send;
+  $("lhi").className = lang === "hi" ? "on" : ""; $("len").className = lang === "en" ? "on" : "";
+  if (phase === "question") setStatus(U.tapQ); else if (phase === "quiz") setStatus(U.tapA);
+  renderChips();
+}
+function addMsg(who, text) {
+  const d = document.createElement("div"); d.className = "b " + who; d.textContent = text;
+  $("chat").appendChild(d); $("chat").scrollTop = $("chat").scrollHeight; return d;
+}
+const _keep = [];
+function checkVoices() {
+  const vs = speechSynthesis.getVoices();
+  if (!vs.length) return;
+  const hasHi = vs.some(v => v.lang && v.lang.replace("_", "-").toLowerCase().startsWith("hi"));
+  console.log("Voices:", vs.map(v => v.name + " " + v.lang).join(" | "));
+  const bn = $("vbanner");
+  if (bn) bn.style.display = (lang === "hi" && !hasHi) ? "block" : "none";
+}
+speechSynthesis.onvoiceschanged = checkVoices;
+
+function speakChunk(txt) {
+  return new Promise(r => {
+    let fin = false, t;
+    const done = () => { if (fin) return; fin = true; clearTimeout(t); r(); };
+    try {
+      speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(txt);
+      _keep.push(u); if (_keep.length > 30) _keep.shift();
+      u.lang = UI[lang].speak; u.rate = 0.9; u.volume = 1;
+      const pref = lang === "en" ? "en" : "hi";
+      const v = speechSynthesis.getVoices().find(v => v.lang && v.lang.replace("_", "-").toLowerCase().startsWith(pref));
+      if (v) u.voice = v;
+      u.onend = done;
+      u.onerror = e => {
+        if (e.error !== "interrupted" && e.error !== "canceled") {
+          console.error("TTS error:", e.error);
+          setStatus("Voice error: " + e.error + " – install a Hindi voice or switch to EN");
+        }
+        done();
+      };
+      t = setTimeout(done, Math.max(3000, txt.length * 160));
+      setTimeout(() => speechSynthesis.speak(u), 60);
+    } catch (e) { console.error(e); done(); }
+  });
+}
+
+function speak(text) {
+  return new Promise(res => {
+    const bubble = addMsg("bot", text); bubble.classList.add("speaking"); $("wave").classList.add("on");
+    const finish = () => { bubble.classList.remove("speaking"); $("wave").classList.remove("on"); res(); };
+    const chunks = text.split(/(?<=[।.?!])\s+/).filter(Boolean);
+    let i = 0;
+    const next = () => { if (i >= chunks.length) return finish(); speakChunk(chunks[i++]).then(next); };
+    next();
+  });
+}
+function listen() {
+  return new Promise(res => {
+    if (!SR) { res(null); return; }
+    const r = new SR(); r.lang = UI[lang].speak; r.interimResults = false; r.maxAlternatives = 1;
+    r.onresult = e => res(e.results[0][0].transcript);
+    r.onerror = () => res(null); r.onend = () => res(null);
+    setStatus(UI[lang].listening); r.start();
+  });
+}
+async function begin() {
+  $("start").hidden = true; setPhase("busy"); setStep(0);
+  await speak(instr());
+  setStep(1);
+  await speak(UI[lang].prompt);
+  setPhase("question"); $("mic").hidden = false; $("skip").hidden = false; $("repeat").hidden = false;
+  setStatus(UI[lang].tapQ);
+}
+async function startQuiz() {
+  setPhase("busy"); $("skip").hidden = true; setStep(2);
+  await speak(UI[lang].quizIntro + quizQ());
+  setPhase("quiz"); setStatus(UI[lang].tapA);
+}
+async function doQuestion(t) {
+  setPhase("busy"); question = t;
+  await speak(getAnswerL(mid, t, lang));
+  await startQuiz();
+}
+async function doQuiz(t) {
+  setPhase("busy"); setStep(3);
+  const ok = evaluate(mid, t);
+  LogService.add({ workerId: worker, machineId: mid, procedureId: M.procedureId, questionText: question, answerTranscript: t, understood: ok, language: lang, timestamp: new Date().toISOString() });
+  const chip = document.createElement("div");
+  chip.className = "chip " + (ok ? "ok" : "bad");
+  chip.textContent = ok ? UI[lang].ok : UI[lang].no;
+  $("chat").appendChild(chip); $("chat").scrollTop = $("chat").scrollHeight;
+  await speak(ok ? UI[lang].good : UI[lang].bad);
+  if (!ok) await speak(instr());
+  setPhase("done"); setStatus(UI[lang].done); $("again").hidden = false;
+}
+function handle(t) {
+  if (phase !== "question" && phase !== "quiz") return;
+  addMsg("me", t);
+  if (phase === "question") doQuestion(t); else doQuiz(t);
+}
+$("lhi").onclick = () => { lang = "hi"; applyLang(); checkVoices(); };
+$("len").onclick = () => { lang = "en"; applyLang(); checkVoices(); };
+$("start").onclick = begin;
+$("skip").onclick = () => { if (phase === "question") startQuiz(); };
+$("repeat").onclick = () => speak(instr());
+$("again").onclick = () => location.reload();
+$("send").onclick = () => { const t = $("txt").value.trim(); if (t) { $("txt").value = ""; handle(t); } };
+$("txt").onkeydown = e => { if (e.key === "Enter") $("send").click(); };
+$("mic").onclick = async () => {
+  if (busy || (phase !== "question" && phase !== "quiz")) return;
+  busy = true; $("mic").classList.add("on");
+  const t = await listen();
+  $("mic").classList.remove("on"); busy = false;
+  if (!t) { setStatus(SR ? UI[lang].nohear : UI[lang].nosr); return; }
+  handle(t);
+};
+setStep(-1); applyLang(); checkVoices(); setTimeout(checkVoices, 700);
+</script></body></html>
